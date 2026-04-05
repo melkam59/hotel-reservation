@@ -1,0 +1,91 @@
+package api
+
+import (
+	"strconv"
+
+	"github.com/fulltimegodev/hotel-reservation/db"
+	"github.com/fulltimegodev/hotel-reservation/ent"
+	"github.com/fulltimegodev/hotel-reservation/types"
+	"github.com/gofiber/fiber/v2"
+)
+
+type UserHandler struct {
+	userStore db.UserStore
+}
+
+func NewUserHandler(userStore db.UserStore) *UserHandler {
+	return &UserHandler{
+		userStore: userStore,
+	}
+}
+
+func (h *UserHandler) HandlePutUser(c *fiber.Ctx) error {
+	var (
+		params types.UpdateUserParams
+	)
+	userID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return ErrInvalidID()
+	}
+	if err := c.BodyParser(&params); err != nil {
+		return ErrBadRequest()
+	}
+	filter := db.Map{"_id": userID}
+	if err := h.userStore.UpdateUser(c.Context(), filter, params); err != nil {
+		return err
+	}
+	return c.JSON(map[string]any{"updated": userID})
+}
+
+func (h *UserHandler) HandleDeleteUser(c *fiber.Ctx) error {
+	userID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return ErrInvalidID()
+	}
+	if err := h.userStore.DeleteUser(c.Context(), userID); err != nil {
+		return err
+	}
+	return c.JSON(map[string]any{"deleted": userID})
+}
+
+func (h *UserHandler) HandlePostUser(c *fiber.Ctx) error {
+	var params types.CreateUserParams
+	if err := c.BodyParser(&params); err != nil {
+		return ErrBadRequest()
+	}
+	if errors := params.Validate(); len(errors) > 0 {
+		return c.JSON(errors)
+	}
+	user, err := types.NewUserFromParams(params)
+	if err != nil {
+		return err
+	}
+	insertedUser, err := h.userStore.InsertUser(c.Context(), user)
+	if err != nil {
+		return err
+	}
+	return c.JSON(insertedUser)
+}
+
+func (h *UserHandler) HandleGetUser(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return ErrInvalidID()
+	}
+	user, err := h.userStore.GetUserByID(c.Context(), id)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return c.JSON(map[string]string{"error": "not found"})
+		}
+		return err
+	}
+	return c.JSON(user)
+}
+
+func (h *UserHandler) HandleGetUsers(c *fiber.Ctx) error {
+	users, err := h.userStore.GetUsers(c.Context())
+	if err != nil {
+		return ErrNotResourceNotFound("user")
+	}
+	return c.JSON(users)
+}
